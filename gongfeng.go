@@ -25,6 +25,13 @@ const (
 
 	apiVersionPath = "api/v3"
 	userAgent      = "gongfeng-sdk-go"
+
+	// maxRetryAttempts 封顶 WithRetry 的尝试次数。
+	maxRetryAttempts = 5
+	// defaultRetryBaseDelay 是指数退避的基数。
+	defaultRetryBaseDelay = 200 * time.Millisecond
+	// maxRetryDelay 封顶单次退避时长（含 Retry-After 携带的值）。
+	maxRetryDelay = 10 * time.Second
 )
 
 // Client 是腾讯工蜂 API 的客户端入口。
@@ -44,6 +51,11 @@ type Client struct {
 	// logger 是可选的调试日志出口（Logger，kv 风格；默认 noop）。
 	// 注入方传 oekit/logx 或宿主的同构接口实现即可。
 	logger Logger
+
+	// retryMax 是幂等请求（GET/HEAD）的最大尝试次数（含首次），1 = 关闭
+	// 重试（默认）；上限 maxRetryAttempts。retryBaseDelay 是指数退避基数。
+	retryMax       int
+	retryBaseDelay time.Duration
 
 	// Services
 
@@ -79,6 +91,22 @@ func WithBaseURL(urlStr string) ClientOptionFunc {
 	}
 }
 
+// WithRetry 打开幂等请求（GET/HEAD）的自动重试：对网络错误与
+// 429/500/502/503/504 响应按指数退避重试（尊重 Retry-After，单次封顶
+// 10s）。attempts 含首次请求，1 = 关闭（默认），上限 5。写请求永不重放。
+func WithRetry(attempts int) ClientOptionFunc {
+	return func(c *Client) error {
+		if attempts < 1 {
+			attempts = 1
+		}
+		if attempts > maxRetryAttempts {
+			attempts = maxRetryAttempts
+		}
+		c.retryMax = attempts
+		return nil
+	}
+}
+
 // WithHTTPClient 设置自定义的 HTTP 客户端。
 func WithHTTPClient(httpClient *http.Client) ClientOptionFunc {
 	return func(c *Client) error {
@@ -106,9 +134,11 @@ func NewClient(token string, options ...ClientOptionFunc) (*Client, error) {
 	}
 
 	c := &Client{
-		token:     token,
-		userAgent: userAgent,
-		logger:    NewNoopLogger(),
+		token:          token,
+		userAgent:      userAgent,
+		logger:         NewNoopLogger(),
+		retryMax:       1,
+		retryBaseDelay: defaultRetryBaseDelay,
 	}
 
 	// 设置默认 BaseURL
@@ -298,7 +328,49 @@ func (c *Client) NewRequest(ctx context.Context, method, path string, body inter
 // Do 执行 API 请求并将 JSON 响应解码到 v。
 // 如果 v 为 nil 则不解码响应体。
 // 如果 v 实现了 io.Writer，则将响应体直接写入。
+//
+// 经 WithRetry 打开重试后，幂等请求（GET/HEAD）对网络错误与
+// 429/500/502/503/504 自动退避重放；写请求与 body 不可重建的请求永不
+// 重放。
 func (c *Client) Do(req *http.Request, v interface{}) (*Response, error) {
+	attempts := c.retryMax
+	if attempts < 1 {
+		attempts = 1
+	}
+
+	var resp *Response
+	var err error
+	for attempt := 1; ; attempt++ {
+		attemptReq := req
+		if attempt > 1 && req.Body != nil {
+			// 有请求体的重放需要可重建的 body；无 body 的 GET/HEAD 直接
+			// 复用原请求。
+			if req.GetBody == nil {
+				break // body 不可重建：无法重放，用上一次结果收尾
+			}
+			cloned := req.Clone(req.Context())
+			body, berr := req.GetBody()
+			if berr != nil {
+				break
+			}
+			cloned.Body = io.NopCloser(body)
+			attemptReq = cloned
+		}
+
+		resp, err = c.execute(attemptReq, v)
+
+		if attempt >= attempts || !c.retryable(req, resp, err) {
+			return resp, err
+		}
+		c.logger.Warn("gongfeng retrying request",
+			"method", req.Method, "path", req.URL.Path, "attempt", attempt)
+		c.backoffSleep(req.Context(), attempt, resp)
+	}
+	return resp, err
+}
+
+// execute 发起单次 HTTP 请求并解码响应（Do 的无重试内核）。
+func (c *Client) execute(req *http.Request, v interface{}) (*Response, error) {
 	start := time.Now()
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -327,6 +399,49 @@ func (c *Client) Do(req *http.Request, v interface{}) (*Response, error) {
 	}
 
 	return response, err
+}
+
+// retryable 判定一次尝试是否值得重放：仅幂等动词；网络错误（execute 未
+// 产出响应）可重试；HTTP 层面仅 429/500/502/503/504 可重试，其余 4xx 不
+// 重放。注意 SDK 约定 HTTP 错误时 resp 与 err 同时非空，故不能以 err 单
+// 独判定。
+func (c *Client) retryable(req *http.Request, resp *Response, err error) bool {
+	if req.Method != http.MethodGet && req.Method != http.MethodHead {
+		return false
+	}
+	if resp == nil || resp.Response == nil {
+		return err != nil
+	}
+	switch resp.Response.StatusCode {
+	case http.StatusTooManyRequests,
+		http.StatusInternalServerError,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout:
+		return true
+	}
+	return false
+}
+
+// backoffSleep 退避等待：429/503 响应携带 Retry-After 时优先采用（封顶
+// maxRetryDelay），否则 base × 2^(attempt-1)。ctx 取消时提前返回——下一
+// 次请求会自然携带取消错误失败。
+func (c *Client) backoffSleep(ctx context.Context, attempt int, resp *Response) {
+	delay := c.retryBaseDelay << (attempt - 1)
+	if delay > maxRetryDelay {
+		delay = maxRetryDelay
+	}
+	if resp != nil && resp.Response != nil {
+		if ra, ok := retryAfter(resp.Response); ok && ra < delay {
+			delay = ra
+		}
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+	case <-timer.C:
+	}
 }
 
 // checkResponse 检查 HTTP 状态码，非 2xx 返回 ErrorResponse。

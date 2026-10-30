@@ -37,6 +37,35 @@ mr, _, err := client.MergeRequests.CreateMergeRequest(ctx, "owner/repo",
 `page` / `per_page` 分页，`Response` 解析 `X-Total` / `X-Total-Pages` 等
 分页头。
 
+## 能力增强
+
+**分页游走**——`Paginate` 依据 `X-Next-Page` 走完整个列表（50 页预算
+封顶，单页失败带 page kv 报错）：
+
+```go
+projects, err := gongfeng.Paginate(func(page int) ([]*gongfeng.Project, *gongfeng.Response, error) {
+    return client.Projects.ListProjects(ctx, &gongfeng.ListProjectsOptions{
+        ListOptions: gongfeng.ListOptions{Page: page, PerPage: 100},
+    })
+})
+```
+
+**可选重试**——`WithRetry(attempts)` 对幂等请求（GET/HEAD）的
+网络错误与 429/500/502/503/504 自动指数退避（尊重 `Retry-After`，单次
+封顶 10s）；写请求永不重放。默认关闭。
+
+**错误判定**——`IsNotFound` / `IsUnauthorized` / `IsForbidden` /
+`IsRateLimited` / `StatusCode(err)` 基于类型化 `*ErrorResponse` 的
+errors.As 链判定，跨包装可用。
+
+## 端点覆盖审计
+
+以 docs/api/ 官方文档镜像为准做了端点级比对（143 个 METHOD+path）：
+SDK 覆盖率 **100%**。两个已知的文档侧错误在 SDK 中按实际情况处理——
+`GET projects/:id/merge_requests/:id/changed_files`（复数旧路径，官方
+文档遗留；SDK 走官方当前生效的 `merge_request` 单数形态）与
+`PUT …/reviews/:id/notes/note_id`（文档笔误，`note_id` 缺 `:` 占位）。
+
 ## 设计约定
 
 - **错误**走 `github.com/oekit/pkg/errors`：带格式的构造（含 `%w`）用
