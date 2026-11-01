@@ -360,6 +360,13 @@ func (c *Client) Do(req *http.Request, v interface{}) (*Response, error) {
 		resp, err = c.execute(attemptReq, v)
 
 		if attempt >= attempts || !c.retryable(req, resp, err) {
+			// 重试预算内耗尽（开了重试、最后一次失败仍属可重试类）才标
+			// exhausted：单次尝试（未开重试）与 body 不可重放的提前收尾
+			// 都原样返回。Wrap 保 cause 链，IsNotFound/IsRateLimited 等
+			// 判定不受影响。
+			if err != nil && attempts > 1 && attempt >= attempts && c.retryable(req, resp, err) {
+				return resp, errRetryExhausted(attempts, err)
+			}
 			return resp, err
 		}
 		c.logger.Warn("gongfeng retrying request",

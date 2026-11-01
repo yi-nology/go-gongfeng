@@ -37,6 +37,10 @@ mr, _, err := client.MergeRequests.CreateMergeRequest(ctx, "owner/repo",
 `page` / `per_page` 分页，`Response` 解析 `X-Total` / `X-Total-Pages` 等
 分页头。
 
+可运行的完整示例见 [examples/quickstart](examples/quickstart/main.go)：
+构造客户端（重试 + 日志注入）、分页游走、错误分类与 webhook 增删查改
+一轮走完，`GONGFENG_TOKEN=xxx go run examples/quickstart/main.go` 即可跑。
+
 ## 能力增强
 
 **分页游走**——`Paginate` 依据 `X-Next-Page` 走完整个列表（50 页预算
