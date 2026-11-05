@@ -2,6 +2,7 @@ package gongfeng
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"testing"
@@ -129,5 +130,65 @@ func TestDeleteRelease(t *testing.T) {
 	_, err := client.Releases.DeleteRelease(context.Background(), 1, 100)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestGetReleaseByTag(t *testing.T) {
+	client, mux := setup(t)
+
+	mux.HandleFunc("/api/v3/projects/1/releases", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"id":1,"tag":"v1.0"},{"id":2,"tag":"v2.0"}]`)
+	})
+
+	release, _, err := client.Releases.GetReleaseByTag(context.Background(), 1, "v2.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if release.ID != 2 {
+		t.Fatalf("expected ID 2, got %d", release.ID)
+	}
+	if release.Tag != "v2.0" {
+		t.Fatalf("expected tag 'v2.0', got %q", release.Tag)
+	}
+}
+
+func TestGetReleaseByTagNotFound(t *testing.T) {
+	client, mux := setup(t)
+
+	mux.HandleFunc("/api/v3/projects/1/releases", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"id":1,"tag":"v1.0"}]`)
+	})
+
+	_, _, err := client.Releases.GetReleaseByTag(context.Background(), 1, "v9.9")
+	if !errors.Is(err, ErrReleaseNotFound) {
+		t.Fatalf("expected ErrReleaseNotFound, got %v", err)
+	}
+}
+
+func TestGetReleaseByTagPaginates(t *testing.T) {
+	client, mux := setup(t)
+
+	// 目标 release 在第 2 页：验证 by-tag 扫描跨页游走，不是只看第一页。
+	mux.HandleFunc("/api/v3/projects/1/releases", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("page") == "2" {
+			fmt.Fprint(w, `[{"id":20,"tag":"v2.0"}]`)
+			return
+		}
+		w.Header().Set("X-Next-Page", "2")
+		fmt.Fprint(w, `[{"id":10,"tag":"v1.0"}]`)
+	})
+
+	release, _, err := client.Releases.GetReleaseByTag(context.Background(), 1, "v2.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if release.ID != 20 {
+		t.Fatalf("expected ID 20 (page 2), got %d", release.ID)
 	}
 }
