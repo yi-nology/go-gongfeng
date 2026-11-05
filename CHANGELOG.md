@@ -8,6 +8,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.3.0] - 2026-11-06
+### Added
+
 - `Releases.GetReleaseByTag(ctx, pid, tag)`：按 tag 取单个 Release 的语法糖
   （工蜂 wire 无 by-tag 端点，SDK 内用 `Paginate` 扫列表匹配，把下游
   GetReleaseByTag/UpdateRelease/DeleteRelease 三条统一面的「扫列表解析 ID」
@@ -16,7 +23,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `UpdateMergeRequestOptions.AssigneeID` 字段注释显式标注：工蜂 MR 更新
   wire 只有单 `assignee_id`，多指派不可表达，防下游按 GitLab `assignee_ids`
   血统误传数组（go-git-platform 分歧台账登记的两处 wire 缺口，见 issue #1）。
-
 ## [0.2.1] - 2026-10-30
 
 ### Fixed
