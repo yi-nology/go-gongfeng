@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `Releases.GetReleaseByTag(ctx, pid, tag)`：按 tag 取单个 Release 的语法糖
+  （工蜂 wire 无 by-tag 端点，SDK 内用 `Paginate` 扫列表匹配，把下游
+  GetReleaseByTag/UpdateRelease/DeleteRelease 三条统一面的「扫列表解析 ID」
+  detour 收进上游共享）。命中即返回、无缓存；未命中返回哨兵
+  `ErrReleaseNotFound`（`errors.Is` 可判定）。附三组单测（命中/未命中/跨页）。
+- `UpdateMergeRequestOptions.AssigneeID` 字段注释显式标注：工蜂 MR 更新
+  wire 只有单 `assignee_id`，多指派不可表达，防下游按 GitLab `assignee_ids`
+  血统误传数组（go-git-platform 分歧台账登记的两处 wire 缺口，见 issue #1）。
+
 ## [0.2.1] - 2026-10-30
 
 ### Fixed

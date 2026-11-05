@@ -208,9 +208,12 @@ type UpdateMergeRequestOptions struct {
 	Title        *string `json:"title,omitempty"`
 	Description  *string `json:"description,omitempty"`
 	TargetBranch *string `json:"target_branch,omitempty"`
-	AssigneeID   *int    `json:"assignee_id,omitempty"`
-	StateEvent   *string `json:"state_event,omitempty"`
-	Labels       *string `json:"labels,omitempty"`
+	// AssigneeID 单指派人。工蜂 MR 更新 wire 只有一个 assignee_id 字段，
+	// 多指派不可表达——与 GitLab 的 assignee_ids（复数）不同源，下游按
+	// GitLab 血统误传数组不会生效。多值场景请收敛为单个 ID 再传。
+	AssigneeID *int    `json:"assignee_id,omitempty"`
+	StateEvent *string `json:"state_event,omitempty"`
+	Labels     *string `json:"labels,omitempty"`
 }
 
 // UpdateMergeRequest 更新合并请求。

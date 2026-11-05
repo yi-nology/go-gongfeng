@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+
+	oekiterrors "github.com/oekit/pkg/errors"
 )
 
 // ReleaseRef 表示 Release 关联的 Tag 引用信息。
@@ -80,6 +82,33 @@ func (s *ReleasesService) GetRelease(ctx context.Context, pid interface{}, relea
 	}
 
 	return &release, resp, nil
+}
+
+// ErrReleaseNotFound 在项目下没有匹配 tag 的 Release 时由 GetReleaseByTag
+// 返回（工蜂 release 端点只支持 ID 寻址，by-tag 只能在 SDK 层判定）。
+var ErrReleaseNotFound = oekiterrors.New("gongfeng: release not found for tag")
+
+// GetReleaseByTag 按 tag 取单个 Release：工蜂 wire 没有 by-tag 端点，
+// 这里用 Paginate 扫全量列表匹配 tag，把这个 O(n) detour 收进 SDK、
+// 所有消费方共享。命中即返回（无缓存，列表多时每次都是全量扫描；
+// 重复查询请自行缓存返回的 Release.ID，后续走 GetRelease/UpdateRelease/
+// DeleteRelease 仍是 ID 寻址）。未命中返回 ErrReleaseNotFound，可用
+// errors.Is 判定。
+func (s *ReleasesService) GetReleaseByTag(ctx context.Context, pid interface{}, tag string) (*Release, *Response, error) {
+	releases, err := Paginate(func(page int) ([]*Release, *Response, error) {
+		return s.ListReleases(ctx, pid, &ListReleasesOptions{
+			ListOptions: ListOptions{Page: page, PerPage: 100},
+		})
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, r := range releases {
+		if r != nil && r.Tag == tag {
+			return r, nil, nil
+		}
+	}
+	return nil, nil, oekiterrors.Wrap(ErrReleaseNotFound, "gongfeng: no release matched tag", "tag", tag)
 }
 
 // CreateReleaseOptions 是 CreateRelease 的可选参数。
