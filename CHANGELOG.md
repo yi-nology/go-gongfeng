@@ -10,6 +10,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+### Fixed
+
+## [0.3.1] - 2026-11-11
+
+### Changed
+
 - 依赖升级：`github.com/oekit/pkg` v0.28.0 → v0.42.0（`go get -u ./...`，
   全量测试通过，无破坏性变更）。
 
