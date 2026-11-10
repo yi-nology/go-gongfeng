@@ -430,20 +430,28 @@ func (c *Client) retryable(req *http.Request, resp *Response, err error) bool {
 	return false
 }
 
-// backoffSleep 退避等待：429/503 响应携带 Retry-After 时优先采用（封顶
-// maxRetryDelay），否则 base × 2^(attempt-1)。ctx 取消时提前返回——下一
-// 次请求会自然携带取消错误失败。
-func (c *Client) backoffSleep(ctx context.Context, attempt int, resp *Response) {
-	delay := c.retryBaseDelay << (attempt - 1)
-	if delay > maxRetryDelay {
-		delay = maxRetryDelay
-	}
+// retryDelay 计算下一次尝试前的等待时长：响应携带 Retry-After 时
+// **服务端建议优先**（无论比本地指数退避长还是短，一律封顶
+// maxRetryDelay），否则 base × 2^(attempt-1)（同样封顶）。
+//
+// 取舍方向是修过的 bug（issue #4）：旧条件 `ra < delay` 只在服务端
+// 建议更短时才采用，而限流窗口的常态恰恰是服务端要求等得更久
+// （`Retry-After: 60` 对上本地退避 1s/2s/4s）——Retry-After 被完全
+// 忽略，SDK 在服务端限流窗口内持续撞墙，与「优先采用」的注释相反。
+func (c *Client) retryDelay(attempt int, resp *Response) time.Duration {
+	delay := min(c.retryBaseDelay<<(attempt-1), maxRetryDelay)
 	if resp != nil && resp.Response != nil {
-		if ra, ok := retryAfter(resp.Response); ok && ra < delay {
-			delay = ra
+		if ra, ok := retryAfter(resp.Response); ok {
+			delay = min(ra, maxRetryDelay)
 		}
 	}
-	timer := time.NewTimer(delay)
+	return delay
+}
+
+// backoffSleep 按 retryDelay 的计算结果退避等待。ctx 取消时提前返回
+// ——下一次请求会自然携带取消错误失败。
+func (c *Client) backoffSleep(ctx context.Context, attempt int, resp *Response) {
+	timer := time.NewTimer(c.retryDelay(attempt, resp))
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():

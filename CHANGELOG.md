@@ -10,7 +10,27 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- 依赖升级：`github.com/oekit/pkg` v0.28.0 → v0.42.0（`go get -u ./...`，
+  全量测试通过，无破坏性变更）。
+
 ### Fixed
+
+- **Paginate 单页失败不再回滚已取回的页（issue #3）**：单页失败一支此前
+  返回 `nil`，与自身 doc「已取回的页不回滚」直接相反（触及页数预算
+  一支却返回部分结果，两条错误路径口径相反）。现在统一为「部分结果
+  + 包装错误」：`err != nil` 时返回的 slice 是中断前已成功拉取的部分。
+  `GetReleaseByTag` 同步改为先在已取回的部分里找 tag、命中即返回
+  （网络抖动不再丢掉已扫到的 release——工蜂无 by-tag 端点，下游无路
+  可绕）；未命中且 `err != nil` 时错误优先于 `ErrReleaseNotFound`
+  上抛，调用方可区分「列表没扫完」与「扫完了但没有」。
+- **backoffSleep 优先采用服务端 Retry-After（issue #4）**：旧条件
+  `ra < delay` 只在服务端建议**更短**时才采用，限流窗口的常态（服务端
+  要求等 3s/60s、本地退避才 200ms/400ms）下 Retry-After 被完全忽略，
+  SDK 在限流窗口内持续撞墙，与注释「优先采用」相反。取舍逻辑抽为
+  `retryDelay`：响应携带合法 Retry-After 时一律采用服务端建议（无论
+  长短，封顶 `maxRetryDelay`），否则本地指数退避（同样封顶）。
+  `retryAfter` 解析顺带支持 HTTP-date 形式（`http.ParseTime`，过去的
+  日期拒绝），与姊妹仓 go-gitcode 的口径对齐。
 
 ## [0.3.0] - 2026-11-06
 ### Added

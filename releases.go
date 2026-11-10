@@ -94,19 +94,27 @@ var ErrReleaseNotFound = oekiterrors.New("gongfeng: release not found for tag")
 // 重复查询请自行缓存返回的 Release.ID，后续走 GetRelease/UpdateRelease/
 // DeleteRelease 仍是 ID 寻址）。未命中返回 ErrReleaseNotFound，可用
 // errors.Is 判定。
+//
+// Paginate 单页失败时会返回「已取回的部分 + 错误」：这里先在已扫到
+// 的部分里找 tag，命中即返回（网络抖动不再丢掉已扫到的结果，
+// issue #3）；未命中且 err != nil 时错误优先于 ErrReleaseNotFound
+// 上抛——调用方能区分「列表没扫完」与「扫完了但没有」。
 func (s *ReleasesService) GetReleaseByTag(ctx context.Context, pid interface{}, tag string) (*Release, *Response, error) {
 	releases, err := Paginate(func(page int) ([]*Release, *Response, error) {
 		return s.ListReleases(ctx, pid, &ListReleasesOptions{
 			ListOptions: ListOptions{Page: page, PerPage: 100},
 		})
 	})
-	if err != nil {
-		return nil, nil, err
-	}
+	// 先在已取回的部分里找（Paginate 单页失败时返回部分结果 +
+	// 错误，issue #3）：目标已扫到就直接返回，不被后续页的失败
+	// 波及。
 	for _, r := range releases {
 		if r != nil && r.Tag == tag {
 			return r, nil, nil
 		}
+	}
+	if err != nil {
+		return nil, nil, err
 	}
 	return nil, nil, oekiterrors.Wrap(ErrReleaseNotFound, "gongfeng: no release matched tag", "tag", tag)
 }

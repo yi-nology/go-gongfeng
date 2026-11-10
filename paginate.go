@@ -11,8 +11,11 @@ const maxPaginatePages = 50
 
 // Paginate 走完一个列表端点的全部分页：fetch 负责拉取单页（page 从 1
 // 起），SDK 依据响应的 X-Next-Page 头翻页，直到取完或触及
-// maxPaginatePages 预算。单页失败立即以 oekiterrors 包装（携带 page kv）
-// 返回，已取回的页不回滚。
+// maxPaginatePages 预算。两条错误路径（单页失败 / 触及页数预算）都
+// 以 oekiterrors 包装返回，且**已取回的页不回滚**——err != nil 时
+// 返回的 slice 是中断前已成功拉取的部分结果，调用方可先在部分结果
+// 里找目标、再决定如何处置错误（issue #3：单页失败一支此前返回
+// nil，恰与本文档相反）。
 //
 //	client.Paginate(func(page int) ([]*gongfeng.Project, *gongfeng.Response, error) {
 //	    return client.Projects.ListProjects(ctx, &gongfeng.ListProjectsOptions{
@@ -24,7 +27,9 @@ func Paginate[T any](fetch func(page int) ([]T, *Response, error)) ([]T, error) 
 	for page := 1; page <= maxPaginatePages; page++ {
 		list, resp, err := fetch(page)
 		if err != nil {
-			return nil, oekiterrors.Wrap(err, "gongfeng: fetch page failed", "page", page)
+			// 已取回的页不回滚：与触及预算一支同口径，返回部分结果
+			// + 包装错误（issue #3）。
+			return all, oekiterrors.Wrap(err, "gongfeng: fetch page failed", "page", page)
 		}
 		all = append(all, list...)
 		if resp == nil || resp.NextPage == 0 {

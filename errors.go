@@ -42,8 +42,10 @@ func IsRateLimited(err error) bool {
 	return ok && code == http.StatusTooManyRequests
 }
 
-// retryAfter 从 429/503 响应里解析 Retry-After 秒数；缺失或非法返回
-// false。
+// retryAfter 从 429/503 响应里解析 Retry-After：支持 RFC 9110 的两种
+// 形式——delay-seconds 与 HTTP-date（http.ParseTime，取「等到该时刻」
+// 的差值）；缺失、非法、负数秒或已过去的日期都返回 false（调用方回
+// 落本地指数退避）。
 func retryAfter(r *http.Response) (time.Duration, bool) {
 	if r == nil {
 		return 0, false
@@ -52,11 +54,18 @@ func retryAfter(r *http.Response) (time.Duration, bool) {
 	if v == "" {
 		return 0, false
 	}
-	sec, err := strconv.Atoi(v)
-	if err != nil || sec < 0 {
-		return 0, false
+	if sec, err := strconv.Atoi(v); err == nil {
+		if sec < 0 {
+			return 0, false
+		}
+		return time.Duration(sec) * time.Second, true
 	}
-	return time.Duration(sec) * time.Second, true
+	if t, err := http.ParseTime(v); err == nil {
+		if d := time.Until(t); d > 0 {
+			return d, true
+		}
+	}
+	return 0, false
 }
 
 // errRetryExhausted 在重试预算耗尽后返回的哨兵包装：cause 是最后一次的
