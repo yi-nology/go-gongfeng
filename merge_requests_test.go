@@ -3,6 +3,7 @@ package gongfeng
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -161,6 +162,9 @@ func TestListMergeRequestCommits(t *testing.T) {
 	}
 }
 
+// TestCreateMRComment pins the documented request contract (issue #8): the
+// request body must carry the note key (body is a response-side field name),
+// otherwise the server silently stores an empty comment.
 func TestCreateMRComment(t *testing.T) {
 	client, mux := setup(t)
 
@@ -168,12 +172,22 @@ func TestCreateMRComment(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("unexpected method: %s", r.Method)
 		}
+		var reqBody map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if _, ok := reqBody["note"]; !ok {
+			t.Errorf("request body must carry the note key, got %v", reqBody)
+		}
+		if _, ok := reqBody["body"]; ok {
+			t.Errorf("request body must not carry the body key (response-side name), got %v", reqBody)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"id":1,"body":"nice"}`)
 	})
 
 	opts := &CreateMRCommentOptions{
-		Body: Ptr("nice"),
+		Note: Ptr("nice"),
 	}
 	comment, _, err := client.MergeRequests.CreateMRComment(context.Background(), 1, 1, opts)
 	if err != nil {
@@ -233,6 +247,8 @@ func TestUpdateMergeRequest(t *testing.T) {
 	}
 }
 
+// TestGetMRSubscription pins the documented contract (issue #7): the GET
+// subscribe endpoint returns a bare bool, not an object.
 func TestGetMRSubscription(t *testing.T) {
 	client, mux := setup(t)
 
@@ -241,18 +257,21 @@ func TestGetMRSubscription(t *testing.T) {
 			t.Fatalf("unexpected method: %s", r.Method)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"subscribed":true}`)
+		fmt.Fprint(w, `true`)
 	})
 
-	sub, _, err := client.MergeRequests.GetMRSubscription(context.Background(), 1, 1)
+	subscribed, _, err := client.MergeRequests.GetMRSubscription(context.Background(), 1, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !sub.Subscribed {
+	if !subscribed {
 		t.Fatal("expected subscribed=true")
 	}
 }
 
+// TestSubscribeMR pins the documented contract (issue #7): the PUT subscribe
+// endpoint returns only a status code with an empty body, and the SDK must
+// not report that as an error.
 func TestSubscribeMR(t *testing.T) {
 	client, mux := setup(t)
 
@@ -260,19 +279,20 @@ func TestSubscribeMR(t *testing.T) {
 		if r.Method != http.MethodPut {
 			t.Fatalf("unexpected method: %s", r.Method)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"subscribed":true}`)
+		w.WriteHeader(http.StatusCreated)
 	})
 
-	sub, _, err := client.MergeRequests.SubscribeMR(context.Background(), 1, 1)
+	resp, err := client.MergeRequests.SubscribeMR(context.Background(), 1, 1)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("subscribe with empty 201 body must succeed, got %v", err)
 	}
-	if !sub.Subscribed {
-		t.Fatal("expected subscribed=true")
+	if resp == nil || resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201 response, got %+v", resp)
 	}
 }
 
+// TestUnsubscribeMR pins the documented contract (issue #7): the PUT
+// unsubscribe endpoint returns only a status code with an empty body.
 func TestUnsubscribeMR(t *testing.T) {
 	client, mux := setup(t)
 
@@ -280,16 +300,15 @@ func TestUnsubscribeMR(t *testing.T) {
 		if r.Method != http.MethodPut {
 			t.Fatalf("unexpected method: %s", r.Method)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"subscribed":false}`)
+		w.WriteHeader(http.StatusOK)
 	})
 
-	sub, _, err := client.MergeRequests.UnsubscribeMR(context.Background(), 1, 1)
+	resp, err := client.MergeRequests.UnsubscribeMR(context.Background(), 1, 1)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("unsubscribe with empty body must succeed, got %v", err)
 	}
-	if sub.Subscribed {
-		t.Fatal("expected subscribed=false")
+	if resp == nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 response, got %+v", resp)
 	}
 }
 

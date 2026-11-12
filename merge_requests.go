@@ -46,11 +46,6 @@ type MRComment struct {
 	System     bool   `json:"system,omitempty"`
 }
 
-// MRSubscription 表示合并请求的订阅状态。
-type MRSubscription struct {
-	Subscribed bool `json:"subscribed,omitempty"`
-}
-
 // MergeRequestsService 处理与工蜂合并请求相关的 API。
 type MergeRequestsService struct {
 	client *Client
@@ -148,8 +143,10 @@ func (s *MergeRequestsService) ListMergeRequestCommits(ctx context.Context, pid 
 }
 
 // CreateMRCommentOptions 表示 CreateMRComment 的可选参数。
+// 文档的请求参数名是 note（body 是响应侧的字段名）——请求体里必须带
+// note 键，评论正文才会落到服务端（issue #8）。
 type CreateMRCommentOptions struct {
-	Body *string `json:"body,omitempty"`
+	Note *string `json:"note,omitempty"`
 }
 
 // CreateMRComment 添加合并请求评论。
@@ -314,69 +311,65 @@ func (s *MergeRequestsService) GetMergeRequest(ctx context.Context, pid interfac
 }
 
 // GetMRSubscription 查询是否订阅了合并请求。
-func (s *MergeRequestsService) GetMRSubscription(ctx context.Context, pid interface{}, mergeRequestID int) (*MRSubscription, *Response, error) {
+// 文档约定 GET 订阅的返回值是裸布尔（true or false），与缺陷订阅
+// （GetIssueSubscription）同一 API 形状，因此解包目标也是 bool
+// （issue #7：此前解进 MRSubscription 结构体必然报 unmarshal 错）。
+func (s *MergeRequestsService) GetMRSubscription(ctx context.Context, pid interface{}, mergeRequestID int) (bool, *Response, error) {
 	project, err := parseID(pid)
 	if err != nil {
-		return nil, nil, err
+		return false, nil, err
 	}
 	u := fmt.Sprintf("projects/%s/merge_request/%d/subscribe", project, mergeRequestID)
 
 	req, err := s.client.NewRequest(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, nil, err
+		return false, nil, err
 	}
 
-	var sub MRSubscription
-	resp, err := s.client.Do(req, &sub)
+	var subscribed bool
+	resp, err := s.client.Do(req, &subscribed)
 	if err != nil {
-		return nil, resp, err
+		return false, resp, err
 	}
 
-	return &sub, resp, nil
+	return subscribed, resp, nil
 }
 
 // SubscribeMR 订阅合并请求。
-func (s *MergeRequestsService) SubscribeMR(ctx context.Context, pid interface{}, mergeRequestID int) (*MRSubscription, *Response, error) {
+// 文档约定 PUT 订阅的返回值只有状态码（无响应体），与 SubscribeIssue
+// 同款不解包 body（issue #7：此前解空 body 必然得到 EOF，服务端明明
+// 已成功）。
+func (s *MergeRequestsService) SubscribeMR(ctx context.Context, pid interface{}, mergeRequestID int) (*Response, error) {
 	project, err := parseID(pid)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	u := fmt.Sprintf("projects/%s/merge_request/%d/subscribe", project, mergeRequestID)
 
 	req, err := s.client.NewRequest(ctx, http.MethodPut, u, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	var sub MRSubscription
-	resp, err := s.client.Do(req, &sub)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return &sub, resp, nil
+	return s.client.Do(req, nil)
 }
 
 // UnsubscribeMR 取消订阅合并请求。
-func (s *MergeRequestsService) UnsubscribeMR(ctx context.Context, pid interface{}, mergeRequestID int) (*MRSubscription, *Response, error) {
+// 文档约定 PUT 退订的返回值只有状态码（无响应体），与 UnsubscribeIssue
+// 同款不解包 body（issue #7）。
+func (s *MergeRequestsService) UnsubscribeMR(ctx context.Context, pid interface{}, mergeRequestID int) (*Response, error) {
 	project, err := parseID(pid)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	u := fmt.Sprintf("projects/%s/merge_request/%d/unsubscribe", project, mergeRequestID)
 
 	req, err := s.client.NewRequest(ctx, http.MethodPut, u, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	var sub MRSubscription
-	resp, err := s.client.Do(req, &sub)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return &sub, resp, nil
+	return s.client.Do(req, nil)
 }
 
 // DownloadMergeRequestChangedFiles 下载合并请求的差异文件集。
