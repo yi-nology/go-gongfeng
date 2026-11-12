@@ -44,7 +44,7 @@ func TestIntegration_Subscriptions(t *testing.T) {
 		t.Fatalf("ListMergeRequests: %v", err)
 	}
 	if len(mrs) > 0 {
-		sub, _, err := c.MergeRequests.GetMRSubscription(ctx, integrationProject, mrs[0].ID)
+		subscribed, _, err := c.MergeRequests.GetMRSubscription(ctx, integrationProject, mrs[0].ID)
 		if err != nil {
 			if IsNotFound(err) {
 				t.Logf("MR %d subscribe read 404 (platform quirk), skipped", mrs[0].ID)
@@ -52,7 +52,7 @@ func TestIntegration_Subscriptions(t *testing.T) {
 				t.Fatalf("GetMRSubscription: %v", err)
 			}
 		} else {
-			t.Logf("MR %d subscribed=%v", mrs[0].ID, sub.Subscribed)
+			t.Logf("MR %d subscribed=%v", mrs[0].ID, subscribed)
 		}
 	} else {
 		t.Log("no MRs in integration project; MR subscription read skipped")
