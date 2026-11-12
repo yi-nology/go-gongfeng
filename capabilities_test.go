@@ -59,6 +59,56 @@ func TestPaginateWalksAllPages(t *testing.T) {
 	}
 }
 
+// TestPaginateFollowsNonSequentialNextPage pins the documented contract
+// (issue #10): the walker must request the page named by X-Next-Page, not
+// counter+1 — a server that advances pages by jumping (1 → 5) must not
+// silently skip page 5's data while err stays nil.
+func TestPaginateFollowsNonSequentialNextPage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("page")
+		w.Header().Set("Content-Type", "application/json")
+		switch page {
+		case "", "1":
+			// Server says the next page is 5, not 2.
+			w.Header().Set("X-Next-Page", "5")
+			_, _ = w.Write([]byte(`[{"id":1}]`))
+		case "5":
+			_, _ = w.Write([]byte(`[{"id":5}]`))
+		default:
+			t.Errorf("unexpected page requested: %s (want 1 then 5)", page)
+			_, _ = w.Write([]byte(`[]`))
+		}
+	}))
+	defer srv.Close()
+
+	client, err := NewClient("t", WithBaseURL(srv.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pages []int
+	items, err := Paginate(func(page int) ([]*struct {
+		ID int `json:"id"`
+	}, *Response, error) {
+		pages = append(pages, page)
+		req, _ := client.NewRequest(context.Background(), http.MethodGet, "projects",
+			&ListOptions{Page: page, PerPage: 100})
+		var out []*struct {
+			ID int `json:"id"`
+		}
+		resp, err := client.Do(req, &out)
+		return out, resp, err
+	})
+	if err != nil {
+		t.Fatalf("Paginate: %v", err)
+	}
+	if len(pages) != 2 || pages[0] != 1 || pages[1] != 5 {
+		t.Errorf("requested pages = %v, want [1 5] (next page must come from X-Next-Page)", pages)
+	}
+	if len(items) != 2 || items[0].ID != 1 || items[1].ID != 5 {
+		t.Errorf("items = %+v, want ids [1 5] — page 5 must not be skipped", items)
+	}
+}
+
 // TestPaginateStopsWithoutNextPage verifies a nil/zero NextPage terminates
 // the walk even when items remain empty.
 func TestPaginateStopsWithoutNextPage(t *testing.T) {
