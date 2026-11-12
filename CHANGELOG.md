@@ -12,6 +12,22 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+## [0.5.0] - 2026-11-13
+
+### Fixed
+
+- MR 订阅三方法结构体解包修正（#7）：GET 订阅解包 `bool`、PUT 订阅/退订返回
+  `(*Response, error)` 不解包 body——与 Issue 订阅面同款，服务端成功客户端不再
+  报 unmarshal 错。
+- CreateMRComment 请求字段 body→note（#8）：按 API 文档 `note` 字段发，评论
+  正文不再静默为空。
+- CommitStatus 读 state 键（#9）：json tag `status`→`state`，`Status` 字段不再
+  恒空。
+- Paginate 用 X-Next-Page 选页（#10）：下一页页码取响应头而非计数器自增，页码
+  跳跃时不再静默漏页。
+- GetCommitStatusResult 补分页入口（#11）：签名加 `opts *ListOptions`，page/
+  per_page 可传。
+
 ## [0.4.0] - 2026-11-12
 
 ### Changed
