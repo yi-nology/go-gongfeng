@@ -7,11 +7,13 @@ import (
 )
 
 // CommitStatus 表示一个提交的检测状态。
+// 检测状态的 wire 键名是 state（文档取值域 pending/success/error/failure），
+// 与本族请求侧 CreateCommitStatusOptions.State 同名（issue #9）。
 type CommitStatus struct {
 	ID          int    `json:"id,omitempty"`
 	SHA         string `json:"sha,omitempty"`
 	Ref         string `json:"ref,omitempty"`
-	Status      string `json:"status,omitempty"`
+	Status      string `json:"state,omitempty"`
 	Name        string `json:"name,omitempty"`
 	TargetURL   string `json:"target_url,omitempty"`
 	Description string `json:"description,omitempty"`
@@ -25,7 +27,7 @@ type CommitStatus struct {
 // CommitStatusResult 表示一个提交的检测组合结果。
 type CommitStatusResult struct {
 	SHA        string          `json:"sha,omitempty"`
-	Status     string          `json:"status,omitempty"`
+	Status     string          `json:"state,omitempty"`
 	Block      bool            `json:"block,omitempty"`
 	TotalCount int             `json:"total_count,omitempty"`
 	Statuses   []*CommitStatus `json:"statuses,omitempty"`
@@ -101,14 +103,17 @@ func (s *CommitStatusService) ListCommitStatuses(ctx context.Context, pid interf
 }
 
 // GetCommitStatusResult 查询指定提交的检测组合结果。
-func (s *CommitStatusService) GetCommitStatusResult(ctx context.Context, pid interface{}, ref string) (*CommitStatusResult, *Response, error) {
+// 文档给该端点声明了 page/per_page（返回体带 statuses 数组与
+// total_count，是分页列表响应），opts 把它们传进 query（issue #11：
+// 此前 NewRequest 恒收 nil，调用方拿不到第一页之后的检查项）。
+func (s *CommitStatusService) GetCommitStatusResult(ctx context.Context, pid interface{}, ref string, opts *ListOptions) (*CommitStatusResult, *Response, error) {
 	project, err := parseID(pid)
 	if err != nil {
 		return nil, nil, err
 	}
 	path := fmt.Sprintf("projects/%s/commits/%s/status", project, pathEscape(ref))
 
-	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, opts)
 	if err != nil {
 		return nil, nil, err
 	}
