@@ -1,6 +1,8 @@
 package gongfeng
 
 import (
+	"fmt"
+
 	oekiterrors "github.com/oekit/pkg/errors"
 )
 
@@ -36,5 +38,5 @@ func Paginate[T any](fetch func(page int) ([]T, *Response, error)) ([]T, error) 
 			return all, nil
 		}
 	}
-	return all, oekiterrors.Errorf("gongfeng: pagination exceeded %d pages", maxPaginatePages)
+	return all, fmt.Errorf("gongfeng: pagination exceeded %d pages", maxPaginatePages)
 }

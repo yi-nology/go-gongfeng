@@ -210,7 +210,7 @@ func (c *Client) setBaseURL(urlStr string) error {
 
 	baseURL, err := url.Parse(urlStr)
 	if err != nil {
-		return oekiterrors.Errorf("gongfeng: invalid base url %q: %w", urlStr, err)
+		return fmt.Errorf("gongfeng: invalid base url %q: %w", urlStr, err)
 	}
 
 	// 拼接 api/v3/ 路径
@@ -493,6 +493,6 @@ func parseID(id interface{}) (string, error) {
 	case string:
 		return pathEscape(v), nil
 	default:
-		return "", oekiterrors.Errorf("gongfeng: invalid ID type %T, expected int or string", id)
+		return "", fmt.Errorf("gongfeng: invalid ID type %T, expected int or string", id)
 	}
 }
