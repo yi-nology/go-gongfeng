@@ -12,6 +12,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+## [0.4.0] - 2026-11-12
+
+### Changed
+
+- 适配 `github.com/oekit/pkg` v0.45+ 的 errors 面（issue #6）：pkg v0.45.0
+  **移除 `errors.Errorf`**（BREAKING——上游「普通错误包装统一 stdlib
+  fmt.Errorf("%w")，本包只留 Wrap kv/MultiError/Recovered 等 stdlib 没有
+  的能力」），本仓 4 处 `oekiterrors.Errorf` 迁 stdlib `fmt.Errorf`（签名
+  同型、均 ≤1 个 `%w`，Unwrap 语义不变）；`oekiterrors.New/Wrap` 用法
+  保留（v0.46 仍提供）。
+- 依赖地板：`github.com/oekit/pkg` v0.42.0 → **v0.46.0**（全量测试通过）。
+  **迁移说明**：升级本版后 MVS 会把 pkg 抬至 ≥v0.45.0，仍引用
+  `errors.Errorf` 的下游需一并迁 stdlib `fmt.Errorf`（go-git-platform
+  收编轮同步进行）。
+
 ## [0.3.1] - 2026-11-11
 
 ### Changed
