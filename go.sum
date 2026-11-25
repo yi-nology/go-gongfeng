@@ -2,5 +2,5 @@ github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
 github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
 github.com/google/go-querystring v1.2.0 h1:yhqkPbu2/OH+V9BfpCVPZkNmUXhb2gBxJArfhIxNtP0=
 github.com/google/go-querystring v1.2.0/go.mod h1:8IFJqpSRITyJ8QhQ13bmbeMBDfmeEJZD5A0egEOmkqU=
-github.com/oekit/pkg v0.48.0 h1:3j1j8ZyAxX7B4i41Gf0IEHHaTXjC+WAxEYXhW+ZkC+g=
-github.com/oekit/pkg v0.48.0/go.mod h1:Cr6sJpBX2a0gAIgLa32+NY69h/UZtuN6L1ZdXtP9upo=
+github.com/oekit/pkg v0.61.5 h1:gkHqNb0kSZOEu6CC1cs7iYLFv6kzWWDvNLz/jaI501o=
+github.com/oekit/pkg v0.61.5/go.mod h1:Cr6sJpBX2a0gAIgLa32+NY69h/UZtuN6L1ZdXtP9upo=
